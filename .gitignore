@@ -1,0 +1,7 @@
+*.pyc
+*.tmp
+*.default
+__pycache__/
+mac-visitante-env/
+tmp/
+*.bkp

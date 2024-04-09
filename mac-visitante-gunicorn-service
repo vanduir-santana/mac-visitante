@@ -1,0 +1,76 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          dbit-mac-visitante-gunicorn
+# Required-Start:    apache2
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Inicia infraestrutura do MAC Visitante
+# Description:       Processo do gunicorn que recebe requisicoes HTTP
+#                    do nginx ou apache
+#
+### END INIT INFO
+#
+# Author:            Vanduir Santana 
+#
+
+# /etc/init.d/dbit-mac-visitante
+
+APPNAME=mac-visitante
+#USER=www-data
+USER=root
+DIRETORIO=/home/vanduir/dev/mac-visitante/
+ACTIVATE=$DIRETORIO/mac-visitante-env/bin/activate
+APPMODULE=wsgi:app
+PIDF=/var/run/dbit-mac-visitante-gunicorn.pid
+# atribui pid somente se arquivo existir
+[ -f $PIDF ] && PID=`cat $PIDF` || PID=""
+# socket unix pra ficar mais rapido pois proxy e app server tao na msm maquina
+#BIND=unix:/tmp/uaitube-gunicorn-py3.sock
+BIND=0.0.0.0:8081
+WORKERS=2
+ACCESS_LOG=/tmp/mac-visitante-web-access.log
+ERROR_LOG=/tmp/mac-visitante-web-error.log
+
+# Carry out specific functions when asked to by the system
+case "$1" in
+  start)
+    if [ "$PID" != "" ]; then
+        echo "dbIT MAC Visitante ja ta sendo executado! [$PID]"
+    else
+        echo "Iniciando dbIT MAC Visitante..."
+	    source $ACTIVATE
+	    cd $DIRETORIO/web
+        # por enquanto deixar sem o log de acesso pra NAO gerar tanto conteudo pois a pagina web requisita toda hr e fica registrando
+        #gunicorn -D -b $BIND -p $PIDF -w $WORKERS --access-logfile $ACCESS_LOG --log-file $ERROR_LOG --capture-output -u $USER -n mac-visitante $APPMODULE
+        gunicorn -D -b $BIND -p $PIDF -w $WORKERS --log-file $ERROR_LOG --capture-output -u $USER -n mac-visitante $APPMODULE
+    fi
+    ;;
+  stop)
+    echo "Parando dbIT MAC Visitante [$PID]"
+    if [ "$PID" != "" ]; then
+	# pra terminar os workers eh preciso enviar o sinal TERM pro processo
+        kill -s TERM $PID
+    fi
+    ;;
+  status)
+    if [ "$PID" != "" ]; then
+        echo "dbIT MAC Visitante esta sendo executado! [$PID]"
+    else
+        echo "dbIT MAC Visitante parado"
+    fi
+    ;;
+  restart)
+    $0 stop
+    # aguarda finalizacao dos processos do gunicorn
+    if [ "$PID" != "" ]; then while ps -p $PID > /dev/null; do sleep 1; done; fi
+    $0 start
+    ;;
+  *)
+    echo "Uso: service dbit-mac-visitante {start|stop|restart}"
+    exit 1
+    ;;
+esac
+
+exit 0
+

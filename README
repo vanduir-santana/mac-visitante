@@ -1,0 +1,103 @@
+--------------------------------------------------------------------------------
+Descrição
+--------------------------------------------------------------------------------
+Portal cativo para liberação de internet usando o endereço MAC, pra que, por
+exemplo, um visitante possa acessar sem a necessidade de se cadastrar o MAC 
+manualmente. O endereço MAC é enviado pelo próprio servidor dhcp 
+(isc-dhcp-server) e depois adicionado ao banco de dados. Funciona em conjunto
+com os scripts de rede https://github.com/vanduir-santana/rede
+
+--------------------------------------------------------------------------------
+Configuração DHCP Server (isc-dhcp-server)
+--------------------------------------------------------------------------------
+
+=> dhcpd.conf.head
+
+-Habilitar log
+log-facility local7;
+
+-Depois é necessário alterar o arquivo /etc/rsyslog.conf e adicionar
+local7.* /var/log/dhcpd.log
+
+-inserir algo como as linhas abaixo
+on commit {
+      log("========COMMIT===========");
+      set ClientIP = binary-to-ascii(10, 8, ".", leased-address);
+      set ClientMAC = binary-to-ascii(16, 8, ":", substring(hardware, 1, 6));
+      execute("/usr/bin/sudo", "/home/dbit/dev/mac-visitante/visitante.py", ClientIP, ClientMAC);
+}
+
+=> Inserir/alterar o range dentro da subnet pra que o mac-visitante 
+   verifique se eh visitante ou usuario comum que ta conectando
+
+range 192.168.1.140 192.168.1.180;
+
+=> Reiniciar serviços
+
+  # service rsyslog restart
+
+  # service isc-dhcp-server restart
+ou 
+  # rede dhcp
+
+--------------------------------------------------------------------------------
+config.py.default
+--------------------------------------------------------------------------------
+=> Fazer uma cópia desse arquivo para config.py
+=> Fazer as alterações de acordo com as necessidades
+
+--------------------------------------------------------------------------------
+mac-visitante-gunicorn-service.default
+--------------------------------------------------------------------------------
+=> Fazer uma cópia desse arquivo para mac-visitante-gunicorn-service
+=> Alterar cabeçalho de acordo com o web server q tiver usando
+# Required-Start:    apache
+
+=> Ajustar o script de serviço para as configurações de onde esta sendo instalado
+   alterar as seguintes variáveis:
+DIRETORIO: local onde se encontra o projeto
+ACTIVATE: caminho do ativador do venv do projeto
+BIND: host e porta de onde o mac-visitante tá escutando
+
+=> Criar link simbólico e instalar serviço
+  # ln -s /home/dbit/dev/mac-visitante/mac-visitante-gunicorn-service /etc/init.d/dbit-mac-visitante
+  # update-rc.d dbit-mac-visitante defaults
+
+--------------------------------------------------------------------------------
+Ubuntu
+--------------------------------------------------------------------------------
+É preciso corrigir problema "permission denied" apresentado no dhcpd.log quando
+chama o script visitante.py através do execute do on commit do dhcp.conf.
+Solução:
+O problema acontece pelo fato do script estar dentro do diretorio root
+e não ter permissões pra executar como root.
+
+Mover para o home de algum usuário, por exemplo:
+/home/dbit/dev/mac-visitante
+
+visudo:
+dhcpd ALL=NOPASSWD: /home/dbit/dev/mac-visitante/visitante.py
+www-data ALL=NOPASSWD: /home/dbit/dev/mac-visitante/visitante.py
+
+config.py:
+colocar sudo na frente dos comandos cmd_reiniciar_dhcp e cmd_rede_script
+
+
+dhcpd.conf.head:
+execute("/usr/bin/sudo", "/home/dbit/dev/mac-visitante/visitante.py", ClientIP, ClientMAC);
+
+executar o comando:
+rede dhcp
+
+-------------------------------------------------------------------------------
+
+É preciso ajustar o script de rede de acordo com a versão do script do uaitube.
+O script já está ajustado pra redirecionar os que tiverem com o status = marcado
+na porta 80 para o endereço do captive portal. 
+O script web trata de gerar a pagina de acordo com o SO pra exibir a notificação
+pra acesso a página do CP.
+
+--------------------------------------------------------------------------------
+=> Exemplo de linha do log onde o IP é oferecido
+Apr 16 01:55:25 dbit dhcpd: DHCPOFFER on 172.16.0.44 to 00:f4:6f:b8:81:d1 (android-7b75430c3b46a5bb) via eth0
+
